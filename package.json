@@ -1,0 +1,15 @@
+{
+  "name": "skillbridge",
+  "version": "0.1.0",
+  "description": "SkillBridge monorepo",
+  "private": true,
+  "scripts": {
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@11.2.2"
+}
