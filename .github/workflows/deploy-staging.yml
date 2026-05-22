@@ -1,0 +1,137 @@
+name: Deploy staging
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/skillbridge-api:${{ github.sha }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/skillbridge-web:${{ github.sha }}
+
+      - name: Build and push processor image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/processor/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/skillbridge-processor:${{ github.sha }}
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+
+      - name: Ensure namespace
+        run: kubectl apply -f infra/k8s/namespace.yaml
+
+      - name: Deploy API
+        run: |
+          helm upgrade --install api infra/helm/api \
+            --namespace skillbridge \
+            -f infra/helm/api/values.staging.yaml \
+            --set image.tag=${{ github.sha }}
+
+      - name: Deploy web
+        run: |
+          helm upgrade --install web infra/helm/web \
+            --namespace skillbridge \
+            -f infra/helm/web/values.staging.yaml \
+            --set image.tag=${{ github.sha }}
+
+      - name: Deploy processor
+        run: |
+          helm upgrade --install processor infra/helm/processor \
+            --namespace skillbridge \
+            -f infra/helm/processor/values.staging.yaml \
+            --set image.tag=${{ github.sha }}
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+
+      - name: Smoke test services
+        run: |
+          set -euo pipefail
+
+          smoke_test() {
+            local name=$1
+            local url=$2
+
+            for attempt in 1 2 3; do
+              if kubectl run --rm -i --restart=Never "curl-${name}-${attempt}" \
+                --image=curlimages/curl:8.7.1 \
+                --namespace skillbridge -- \
+                curl -sf "$url"; then
+                echo "${name} is healthy"
+                return 0
+              fi
+
+              echo "${name} health check failed (attempt ${attempt})"
+              if [ "$attempt" -lt 3 ]; then
+                sleep 10
+              fi
+            done
+
+            return 1
+          }
+
+          smoke_test api http://api:3000/health
+          smoke_test web http://web:3001/health
+          smoke_test processor http://processor:8000/health
