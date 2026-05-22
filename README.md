@@ -50,3 +50,13 @@ The services will be available at:
 - API: http://localhost:3000
 - Web: http://localhost:3001
 - Processor: http://localhost:8000
+
+## Kubernetes deployment
+
+Use the Makefile helpers to spin up a local kind cluster, deploy the Helm charts, and smoke test the services:
+
+- `make cluster-up`: create a kind cluster using `infra/k8s/kind-cluster.yaml`
+- `make deploy-local`: install/upgrade the Helm charts using `values.staging.yaml`
+- `make smoke-test`: curl the `/health` endpoints for all three services
+- `make logs-api`: tail logs from the API deployment
+- `make cluster-down`: delete the kind cluster
