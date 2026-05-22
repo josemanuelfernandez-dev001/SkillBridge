@@ -1,0 +1,12 @@
+node_modules
+.git
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/*.test.py
+**/__tests__
+**/__pycache__
+**/.pytest_cache
+coverage
+.next

@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+    depends_on:
+      - processor
+    networks:
+      - skillbridge-network
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://api:3000"
+      PORT: "3001"
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      - api
+    networks:
+      - skillbridge-network
+  processor:
+    build:
+      context: .
+      dockerfile: services/processor/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+    networks:
+      - skillbridge-network
+
+networks:
+  skillbridge-network:
+    driver: bridge
